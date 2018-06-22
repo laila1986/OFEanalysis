@@ -1,0 +1,278 @@
+---
+title: "OFE Analysis of strip trials"
+author: "Fiona H Evans"
+date: "6 June 2018"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This document descfibes analyses of an onfarm experiment conducted in Western Australia in 2016, focusing on the potassium (K) trial data.
+
+## Data
+
+The data provided had been previously interpolated to the same locations as the yield monitor data. For this report, the data have been 'anonymised' by rescaling the Longitudes and Latitudes.  Data are provided in the file ‘TrialData.Rdata’:
+
+  * Data frame **dat** contains original data with columns:
+    + Longitude
+    + Latitude
+    + Barley.Yield 
+    + DualEM.Shallow 
+    + Radiometrics.Potassium 
+    + Radiometrics.Thorium 
+    + P.Trial: phosphorus trial rates of 0, 13, 25, 38, 50, 63 and 75 and four zones over the southern part of the paddock  treated with rates of 30, 40, 50 and 60
+    + K.Trial: potassium trial rates of 0, 15, 30 and 60 and three zones over the southern part of the paddock treated with rates of 0, 15 and 30
+    + seedRate.Trial: seeding trial rates of 50, 70, 90 and 110, with a rate of 70 used for the remainder of the paddock
+  * Data frame **Kdat** is the data for the K trial only
+  * rasterStack **rdat** is a 12m by 12m (the header width) grid of the paddock data created by fishnetting (ie. taking the mean of all points within the cell)
+
+
+```{r fig.width = 9, fig.height = 6, message=FALSE, warning=FALSE}
+load("TrialData.Rdata")
+
+if("raster" %in% rownames(installed.packages()) == FALSE) install.packages("raster")
+library(raster)
+
+plot(rdat[[3:9]], axes=F, box=F, nr=2, nc=4)
+```
+
+The extracted K trial dat are shown below. In the K Trial: colour red shows a zero rate, green shows a rate of 15 and cyan shows a rate of 30. 
+
+```{r fig.width = 9, fig.height = 4.15, message=FALSE, warning=FALSE}
+if("agric" %in% rownames(installed.packages()) == FALSE) install_github("fionahevans/agric")
+library(agric) 
+
+par(mfrow=c(2,1))
+par(mai=c(0.1, 0.1, 0.5, 0.1))
+with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$K.Trial), pch=16, axes=F, xlab="", ylab="",
+                main="K.Trial"))
+with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$Barley.Yield), pch=16, axes=F, xlab="", ylab="",
+                main="Barley.Yield"))
+
+```
+
+
+## Data Analysis
+
+### Anova
+
+
+```{r, message=FALSE, warning=FALSE}
+# First make factor for K trial rates
+Kdat$K <- as.factor(Kdat$K.Trial)
+
+# Anova
+a <- aov(Barley.Yield ~ K, data=Kdat)
+TukeyHSD(a)
+```
+Anova shows significant differences (at the 90% level) between all pairs of rates except 30 and 60 which are not significantly different. 
+
+Boxplots of barley yields by K rate show increasing yield with K rates, but density plots show large deviations from normality. For rates 0 and 15, the desnities look trimodal. For rates 30 and 60, the densities look bimodal. 
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+if("ggplot2" %in% rownames(installed.packages()) == FALSE) install.packages("ggplot2")
+if("cowplot" %in% rownames(installed.packages()) == FALSE) install.packages("cowplot")
+library(ggplot2)
+library(cowplot)
+
+gg1 <- ggplot(Kdat, aes(y = Barley.Yield, x = K)) + geom_boxplot() +
+  ggtitle("Barley yields by K rate")
+
+# Check the data for normality
+gg2 <- ggplot(Kdat, aes(Barley.Yield, colour=K, group=K)) + geom_density() +
+  ggtitle("Density plots by K rate")
+
+plot_grid(gg1, gg2)
+
+```
+
+One way to handle this might be to extract regions from within the strips that have normally distributed yields for each rate and then conduct the Anova using that data only. TNote that this would give no insight about the underlying causes of different yields in different regions. 
+
+The strips in this trial are wide, each is measured by around 18 runs of the header. So we do not make further attempts to manually extract data from each strip.
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+
+# Fit Gaussian mixture model with 3 components
+if("mixtools" %in% rownames(installed.packages()) == FALSE) install.packages("mixtools")
+library(mixtools)
+x = Kdat$Barley.Yield
+mixmdl = normalmixEM(x, k=3)
+plot(mixmdl, which=2)
+lines(density(x), lty=2, lwd=2)
+
+
+```
+
+```{r  fig.width = 9, fig.height = 2.07, message=FALSE, warning=FALSE}
+# Get the most likely yield class
+f <- function(pixel, ...) {
+  pixel <- as.vector(pixel)
+  which(pixel == max(pixel))
+}
+
+Kdat$Yield.Class = as.factor(apply(mixmdl$posterior, 1, f))
+# Rasterize and plot
+mymode <- function(x, ...)  {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+par(mai=c(0.1, 0.1, 0.5, 0.1))
+with(Kdat, plot(Longitude, Latitude, col=as.numeric(Yield.Class)+1, pch=16, axes=F, xlab="", ylab="",
+                main="Yield.Class"))
+```
+
+
+
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+# Plot yields by class and K rate
+ggplot(Kdat, aes(y = Barley.Yield, x = Yield.Class, fill = K)) + geom_boxplot()
+```
+
+The mapped yield classes could be optimised further, but we can see now that there is a significant (check the Anova) difference between the three yield classes, and that each responds differently to K applications - and only the lowest yielding areas respond as would be expected (increasing yields with increasing rates up to a maximum yield). The medium-yielding ares have a negative response to K, and the higher yielding areas have a mixed response to K. 
+
+Of course, this classification of yield is based only on a single year and may not be a good way of zoning the trial. 
+
+
+
+### Generalised additive models
+
+Fitting a generalized additive model (GAM) to the trial data; however, the residuals largely correspond to the yield data.
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+if("mgcv" %in% rownames(installed.packages()) == FALSE) install.packages("mgcv")
+library(mgcv)
+par(mai=c(0.1, 0.1, 0.5, 0.1))
+
+g1 <- gam(Barley.Yield ~ s(K.Trial, k=3) , data=Kdat)
+summary(g1)
+p1 <- predict(g1, newdata=Kdat)
+plot(g1)
+```
+
+```{r  fig.width = 9, fig.height = 2.07, message=FALSE, warning=FALSE}
+par(mai=c(0.1, 0.1, 0.5, 0.1))
+with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$Barley.Yield-p1), pch=16, axes=F, xlab="", ylab="",
+                main="GAM residuals"))
+legend.col(col = rainbow(100), lev = Kdat$Barley.Yield-p1)
+```
+
+Adding a term to the model to account for spatial variability reverse the fitted response to K and  reduces the spatial coherence of the residuals.
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+par(mai=c(0.1, 0.1, 0.5, 0.8))
+g2 <- gam(Barley.Yield ~ s(K.Trial, k=3) + s(Longitude, Latitude), data=Kdat)
+summary(g2)
+
+
+p2 <- predict(g2, newdata=Kdat)
+plot(g2, pages=1)
+
+```
+
+```{r  fig.width = 9, fig.height = 2.07, message=FALSE, warning=FALSE}
+par(mai=c(0.1, 0.1, 0.5, 0.8))
+with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$Barley.Yield-p2), pch=16, axes=F, xlab="", ylab="",
+                main="Spatial GAM residuals"))
+legend.col(col = rainbow(100), lev = Kdat$Barley.Yield-p2)
+
+```
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+
+
+```
+
+### Geographically weighted regression
+
+There are several R packages for performing geographically weighted regression. When I have attempted to use the package 'spgwr' with large data sets (n=5000 or more), it takes forever to run. I recommend using package 'GWmodel'.
+
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+
+# Fit Gaussian mixture model with 3 components
+if("GWmodel" %in% rownames(installed.packages()) == FALSE) install.packages("GWmodel")
+library(GWmodel)
+# The following has been adapted from https://rpubs.com/chrisbrunsdon/101305
+
+# Take a randpom sample of 5000 data points and create SpatialPointsDataFrame
+samp <- samp.sp <- Kdat[sample(nrow(Kdat), 5000),]
+coordinates(samp.sp) <- ~Longitude + Latitude
+
+# Us ethe bounding box to create a fine-scale grid that covers the data
+# bbox(samp.sp)
+# min       max
+# Longitude   1.81321  60.23419
+# Latitude  112.98711 129.20555
+
+cs <- c(0.1,0.1)  
+cc <- c(2,113)  
+cd <- c(59,17)/cs  
+grd <- SpatialGrid(GridTopology(cc, cs, cd))
+
+par(mai=c(0,0,0,0))
+plot(grd)
+plot(samp.sp, pch=16, col='firebrick',add=TRUE)
+
+# Caluclate distances - this takes aound 30 seconds on my laptop
+DM <- gw.dist(dp.locat=coordinates(samp.sp), 
+              rp.locat=coordinates(grd))
+ 
+# Do GWR
+gwr.res <- gwr.basic(Barley.Yield ~ K.Trial, data=samp.sp, 
+                     regression.points=grd, bw=1, 
+                     dMat=DM, kernel='gaussian') 
+
+coefs <- as.data.frame(gwr.res$SDF)
+
+par(mfrow=c(2,1))
+par(mai=c(0.1, 0.1, 0.5, 0.8))
+with(coefs, plot(s1, s2, col=color.of(coefs[, "Intercept"]), 
+                 pch=20, axes=F, xlab="", ylab=""))
+legend.col(col = rainbow(100), lev = coefs[, "Intercept"])
+with(coefs, plot(s1, s2, col=color.of(coefs[, "K.Trial"]), 
+              pch=20, axes=F, xlab="", ylab=""))
+legend.col(col = rainbow(100), lev = coefs[, "K.Trial"])
+```
+
+It is hard to compare the respopnse to K with varying intercepts, so perfrom GWR with a fixed intercept.
+
+
+```{r  fig.width = 9, fig.height = 2.07, message=FALSE, warning=FALSE}
+# Set intercept
+gwr.res2 <- gwr.basic(Barley.Yield ~ 0 + K.Trial, data=samp.sp, 
+                     regression.points=grd, bw=1, 
+                     dMat=DM, kernel='gaussian') 
+
+coefs2 <- as.data.frame(gwr.res2$SDF)
+
+par(mfrow=c(2,1))
+par(mai=c(0.1, 0.1, 0.5, 0.8))
+with(coefs2, plot(s1, s2, col=color.of(coefs2[, "K.Trial"]), 
+                 pch=20, axes=F, xlab="", ylab=""))
+legend.col(col = rainbow(100), lev = coefs2[, "K.Trial"])
+```
+
+### Additional data - Gamma radiometrics and shallow EM
+
+#### Clustering
+
+#### Linear and non-linear regressions 
+
+#### GAMs
+
+#### Random forests
+
+## Conclusions
+
+```{r}
+
+```
+
