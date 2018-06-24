@@ -51,10 +51,18 @@ library(agric)
 
 par(mfrow=c(2,1))
 par(mai=c(0.1, 0.1, 0.5, 0.1))
-with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$K.Trial), pch=16, axes=F, xlab="", ylab="",
-                main="K.Trial"))
+with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$K.Trial), pch=16, axes=F, xlab="", ylab="", main="K.Trial"))
 with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$Barley.Yield), pch=16, axes=F, xlab="", ylab="",
                 main="Barley.Yield"))
+
+```
+Zooming in, we can see the locations yield measurements were taken by the yield monitor, as it harvested in a north-south direction.
+
+```{r fig.width = 6, fig.height = 6.15, message=FALSE, warning=FALSE}
+par(mfrow=c(1,1))
+par(mai=c(0.1, 0.1, 0.5, 0.1))
+with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$K.Trial), pch=16, axes=F, xlab="", ylab="", xlim=c(2, 5), ylim=c(115, 120), main="K.Trial"))
+
 
 ```
 
@@ -150,7 +158,6 @@ Fitting a generalized additive model (GAM) to the trial data; however, the resid
 ```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
 if("mgcv" %in% rownames(installed.packages()) == FALSE) install.packages("mgcv")
 library(mgcv)
-par(mai=c(0.1, 0.1, 0.5, 0.1))
 
 g1 <- gam(Barley.Yield ~ s(K.Trial, k=3) , data=Kdat)
 summary(g1)
@@ -159,7 +166,7 @@ plot(g1)
 ```
 
 ```{r  fig.width = 9, fig.height = 2.07, message=FALSE, warning=FALSE}
-par(mai=c(0.1, 0.1, 0.5, 0.1))
+par(mai=c(0.1, 0.1, 0.5, 0.8))
 with(Kdat, plot(Longitude, Latitude, col=color.of(Kdat$Barley.Yield-p1), pch=16, axes=F, xlab="", ylab="",
                 main="GAM residuals"))
 legend.col(col = rainbow(100), lev = Kdat$Barley.Yield-p1)
@@ -168,7 +175,6 @@ legend.col(col = rainbow(100), lev = Kdat$Barley.Yield-p1)
 Adding a term to the model to account for spatial variability reverse the fitted response to K and  reduces the spatial coherence of the residuals.
 
 ```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
-par(mai=c(0.1, 0.1, 0.5, 0.8))
 g2 <- gam(Barley.Yield ~ s(K.Trial, k=3) + s(Longitude, Latitude), data=Kdat)
 summary(g2)
 
@@ -221,7 +227,7 @@ par(mai=c(0,0,0,0))
 plot(grd)
 plot(samp.sp, pch=16, col='firebrick',add=TRUE)
 
-# Caluclate distances - this takes aound 30 seconds on my laptop
+# Calculate distances - this takes aound 30 seconds on my laptop
 DM <- gw.dist(dp.locat=coordinates(samp.sp), 
               rp.locat=coordinates(grd))
  
@@ -234,18 +240,19 @@ coefs <- as.data.frame(gwr.res$SDF)
 
 par(mfrow=c(2,1))
 par(mai=c(0.1, 0.1, 0.5, 0.8))
-with(coefs, plot(s1, s2, col=color.of(coefs[, "Intercept"]), 
-                 pch=20, axes=F, xlab="", ylab=""))
-legend.col(col = rainbow(100), lev = coefs[, "Intercept"])
-with(coefs, plot(s1, s2, col=color.of(coefs[, "K.Trial"]), 
-              pch=20, axes=F, xlab="", ylab=""))
-legend.col(col = rainbow(100), lev = coefs[, "K.Trial"])
+colr <- two.colors.old(100)
+with(coefs, plot(s1, s2, col=color.of(coefs[, "Intercept"], col=colr), 
+                 pch=20, axes=F, xlab="", ylab="", main="Intercept"))
+legend.col(col = colr, lev = coefs[, "Intercept"])
+with(coefs, plot(s1, s2, col=color.of(coefs[, "K.Trial"], col=colr), 
+              pch=20, axes=F, xlab="", ylab="", main="Slope"))
+legend.col(col = colr, lev = coefs[, "K.Trial"])
 ```
 
-It is hard to compare the respopnse to K with varying intercepts, so perfrom GWR with a fixed intercept.
+It is hard to compare the response to K with varying intercepts, so perfrom GWR with a fixed intercept.
 
 
-```{r  fig.width = 9, fig.height = 2.07, message=FALSE, warning=FALSE}
+```{r  fig.width = 9, fig.height = 2.2, message=FALSE, warning=FALSE}
 # Set intercept
 gwr.res2 <- gwr.basic(Barley.Yield ~ 0 + K.Trial, data=samp.sp, 
                      regression.points=grd, bw=1, 
@@ -253,26 +260,80 @@ gwr.res2 <- gwr.basic(Barley.Yield ~ 0 + K.Trial, data=samp.sp,
 
 coefs2 <- as.data.frame(gwr.res2$SDF)
 
-par(mfrow=c(2,1))
 par(mai=c(0.1, 0.1, 0.5, 0.8))
-with(coefs2, plot(s1, s2, col=color.of(coefs2[, "K.Trial"]), 
-                 pch=20, axes=F, xlab="", ylab=""))
-legend.col(col = rainbow(100), lev = coefs2[, "K.Trial"])
+with(coefs2, plot(s1, s2, col=color.of(coefs2[, "K.Trial"], col=colr), 
+                 pch=20, axes=F, xlab="", ylab="", main="Slope"))
+legend.col(col = colr, lev = coefs2[, "K.Trial"])
 ```
 
 ### Additional data - Gamma radiometrics and shallow EM
 
 #### Clustering
 
-#### Linear and non-linear regressions 
+Discussed above - Gaussian mixture models can be applied to multivariate data (covariates) to cluster data into zones.
+
 
 #### GAMs
 
+Discussed above - can add spline terms for additional covariates.
+
 #### Random forests
 
+```{r  fig.width = 9, fig.height = 4, message=FALSE, warning=FALSE}
+
+if("randomForest" %in% rownames(installed.packages()) == FALSE) install.packages("GWmodel")
+library(randomForest)
+
+# randomForest library does not handle missing data, so use complete cases only
+rfsamp <- samp[complete.cases(subset(samp, 
+              select=c("Longitude", "Latitude", "Barley.Yield",
+                       "K.Trial", "DualEM.Shallow", 
+                      "Radiometrics.Potassium",
+                       "Radiometrics.Thorium"))),]
+
+par(mfrow=c(2,1))
+par(mai=c(0.1, 0.1, 0.5, 0.8))
+with(rfsamp, plot(Longitude, Latitude, col=color.of(rfsamp$K.Trial), pch=20, axes=F, xlab="", ylab="",
+                main="K.Trial"))
+with(rfsamp, plot(Longitude, Latitude, col=color.of(rfsamp$Barley.Yield), pch=20, axes=F, xlab="", ylab="",
+                main="Barley.Yield"))
+
+system.time(
+r0 <- randomForest(Barley.Yield ~ K.Trial + DualEM.Shallow + Radiometrics.Potassium + Radiometrics.Thorium,  mtry=4, data=rfsamp))
+# user  system elapsed 
+# 19.04    0.07   19.34 
+print(r0) 
+
+par(mfrow=c(1,1))
+
+varImpPlot(r0)
+
+
+p <- predict(r0, newdata=rfsamp)
+
+# Plot observed vs predicted
+par(mai=c(1, 1, 0.2, 0.2))
+plot(rfsamp$Barley.Yield, p, xlab="Observed", ylab="Predicted")
+
+# Plot residuals
+par(mfrow=c(2,1))
+par(mai=c(0.1, 0.1, 0.5, 0.8))
+with(rfsamp, plot(Longitude, Latitude, col=color.of(rfsamp$Barley.Yield-p), pch=20, axes=F, xlab="", ylab="",
+                  main="Random forest residuals"))
+legend.col(col = rainbow(100), lev = rfsamp$Barley.Yield-p)
+
+```
+
 ## Conclusions
+
+TBC...
 
 ```{r}
 
 ```
+
+
+
+
+
 
